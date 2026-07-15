@@ -12,3 +12,6 @@ artifacts/screenshots/
 artifacts/logs/
 *.log
 .DS_Store
+.claude/
+CLAUDE.md
+AGENTS.md
