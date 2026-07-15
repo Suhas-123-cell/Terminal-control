@@ -71,17 +71,16 @@ const server = http.createServer((req, res) => {
   res.end('remote-terminal-server ok\n');
 });
 
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({
+  server,
+  verifyClient: (info, callback) => {
+    const url = new URL(info.req.url, 'http://localhost');
+    const token = url.searchParams.get('token');
+    callback(token === TERM_TOKEN, 401, 'invalid token');
+  },
+});
 
 wss.on('connection', (ws, req) => {
-  const url = new URL(req.url, 'http://localhost');
-  const token = url.searchParams.get('token');
-
-  if (token !== TERM_TOKEN) {
-    ws.close(4001, 'invalid token');
-    return;
-  }
-
   ws.attachedSessions = new Set();
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
