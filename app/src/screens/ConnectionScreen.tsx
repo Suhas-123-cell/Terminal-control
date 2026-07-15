@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -20,16 +20,23 @@ export function ConnectionScreen({ onConnect }: Props) {
   const [token, setToken] = useState('');
   const [status, setStatus] = useState<'idle' | 'connecting' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
+  const userEditedRef = useRef(false);
 
   useEffect(() => {
     loadConnectionConfig().then((saved) => {
-      if (saved) {
+      // Don't clobber input the user already started typing while this
+      // (async, sometimes slow) SecureStore read was still in flight.
+      if (saved && !userEditedRef.current) {
         setHost(saved.host);
         setPort(saved.port);
         setToken(saved.token);
       }
     });
   }, []);
+
+  const markEdited = () => {
+    userEditedRef.current = true;
+  };
 
   const handleConnect = async () => {
     setStatus('connecting');
@@ -53,9 +60,11 @@ export function ConnectionScreen({ onConnect }: Props) {
       <Text style={styles.title}>Remote Terminal</Text>
       <Text style={styles.label}>Host</Text>
       <TextInput
+        testID="host-input"
         style={styles.input}
         value={host}
-        onChangeText={setHost}
+        onChangeText={(v) => { markEdited(); setHost(v); }}
+        onFocus={markEdited}
         placeholder="10.0.2.2"
         placeholderTextColor="#5b6270"
         autoCapitalize="none"
@@ -63,18 +72,22 @@ export function ConnectionScreen({ onConnect }: Props) {
       />
       <Text style={styles.label}>Port</Text>
       <TextInput
+        testID="port-input"
         style={styles.input}
         value={port}
-        onChangeText={setPort}
+        onChangeText={(v) => { markEdited(); setPort(v); }}
+        onFocus={markEdited}
         placeholder="3000"
         placeholderTextColor="#5b6270"
         keyboardType="number-pad"
       />
       <Text style={styles.label}>Token</Text>
       <TextInput
+        testID="token-input"
         style={styles.input}
         value={token}
-        onChangeText={setToken}
+        onChangeText={(v) => { markEdited(); setToken(v); }}
+        onFocus={markEdited}
         placeholder="TERM_TOKEN"
         placeholderTextColor="#5b6270"
         secureTextEntry
@@ -82,7 +95,12 @@ export function ConnectionScreen({ onConnect }: Props) {
         autoCorrect={false}
       />
 
-      <Pressable style={styles.button} onPress={handleConnect} disabled={status === 'connecting'}>
+      <Pressable
+        testID="connect-button"
+        style={styles.button}
+        onPress={handleConnect}
+        disabled={status === 'connecting'}
+      >
         {status === 'connecting' ? (
           <ActivityIndicator color="#fff" />
         ) : (
@@ -90,7 +108,11 @@ export function ConnectionScreen({ onConnect }: Props) {
         )}
       </Pressable>
 
-      {status === 'error' && error && <Text style={styles.error}>{error}</Text>}
+      {status === 'error' && error && (
+        <Text testID="connect-error" style={styles.error}>
+          {error}
+        </Text>
+      )}
 
       <Text style={styles.hint}>
         Android emulator: use 10.0.2.2{'\n'}iOS simulator: use localhost{'\n'}

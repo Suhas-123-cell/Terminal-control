@@ -36,6 +36,14 @@ export function TerminalScreen({ client }: Props) {
   }, [sessions]);
 
   useEffect(() => {
+    if (!activeId) return;
+    const timer = setTimeout(() => {
+      webviewRefs.current.get(activeId)?.focus();
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [activeId]);
+
+  useEffect(() => {
     const unsubMessage = client.onMessage((msg) => {
       if (msg.type === 'created') {
         setSessions((prev) =>
@@ -44,6 +52,10 @@ export function TerminalScreen({ client }: Props) {
             : [...prev, { id: msg.sessionId, title: msg.title }]
         );
         setActiveId((prev) => prev ?? msg.sessionId);
+        // The WebView ref may not be mounted yet when the shell's first
+        // prompt output arrives, silently dropping it. Re-attach shortly
+        // after so the server replays scrollback once the ref is ready.
+        setTimeout(() => client.attach(msg.sessionId), 150);
       } else if (msg.type === 'sessions') {
         const alive = msg.sessions.filter((s) => s.alive);
         if (alive.length > 0) {
@@ -128,7 +140,7 @@ export function TerminalScreen({ client }: Props) {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={0}
     >
       <View style={styles.tabBar}>

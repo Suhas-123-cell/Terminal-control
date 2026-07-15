@@ -5,6 +5,7 @@ import { terminalHtml } from '../terminalHtml';
 
 export type TerminalWebViewHandle = {
   write: (data: string) => void;
+  focus: () => void;
 };
 
 type Props = {
@@ -22,6 +23,9 @@ export const TerminalWebView = forwardRef<TerminalWebViewHandle, Props>(
         const script = `window.termWrite(${JSON.stringify(JSON.stringify(data))}); true;`;
         webviewRef.current?.injectJavaScript(script);
       },
+      focus: () => {
+        webviewRef.current?.injectJavaScript('window.termFocus && window.termFocus(); true;');
+      },
     }));
 
     const handleMessage = (event: WebViewMessageEvent) => {
@@ -31,6 +35,8 @@ export const TerminalWebView = forwardRef<TerminalWebViewHandle, Props>(
           onInput(msg.data);
         } else if (msg.type === 'resize') {
           onResize(msg.cols, msg.rows);
+        } else if (msg.type === 'html-error') {
+          console.error('[TerminalWebView]', msg.data);
         }
       } catch {
         // ignore malformed bridge messages

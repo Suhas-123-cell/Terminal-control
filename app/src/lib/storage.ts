@@ -11,8 +11,8 @@ export type SessionMeta = {
   title: string;
 };
 
-const CONNECTION_KEY = 'remote-terminal:connection';
-const SESSIONS_KEY = 'remote-terminal:sessions';
+const CONNECTION_KEY = 'remote-terminal.connection';
+const SESSIONS_KEY = 'remote-terminal.sessions';
 
 export async function loadConnectionConfig(): Promise<ConnectionConfig | null> {
   const raw = await SecureStore.getItemAsync(CONNECTION_KEY);

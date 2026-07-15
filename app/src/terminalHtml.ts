@@ -18,6 +18,21 @@ export const terminalHtml = `<!DOCTYPE html>
 <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
 <script>
+  window.onerror = function (message, source, lineno, colno, error) {
+    if (window.ReactNativeWebView) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({
+        type: 'html-error',
+        data: 'onerror: ' + message + ' @ ' + source + ':' + lineno + ' typeofTerminal=' + typeof Terminal + ' typeofFitAddon=' + typeof FitAddon,
+      }));
+    }
+  };
+  window.addEventListener('unhandledrejection', function (e) {
+    if (window.ReactNativeWebView) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'html-error', data: 'unhandledrejection: ' + e.reason }));
+    }
+  });
+</script>
+<script>
   const term = new Terminal({
     cursorBlink: true,
     fontSize: 13,
@@ -28,6 +43,16 @@ export const terminalHtml = `<!DOCTYPE html>
   const fitAddon = new FitAddon.FitAddon();
   term.loadAddon(fitAddon);
   term.open(document.getElementById('terminal'));
+
+  // Shell commands are not prose: stop the soft keyboard from
+  // autocorrecting/predicting/capitalizing what gets typed here.
+  var helperTextarea = document.querySelector('.xterm-helper-textarea');
+  if (helperTextarea) {
+    helperTextarea.setAttribute('autocomplete', 'off');
+    helperTextarea.setAttribute('autocorrect', 'off');
+    helperTextarea.setAttribute('autocapitalize', 'off');
+    helperTextarea.setAttribute('spellcheck', 'false');
+  }
   fitAddon.fit();
 
   function post(msg) {
@@ -55,8 +80,15 @@ export const terminalHtml = `<!DOCTYPE html>
     term.write(JSON.parse(dataJson));
   };
 
+  // Native code calls this when this terminal's tab becomes active, so the
+  // soft keyboard follows focus between tabs.
+  window.termFocus = function () {
+    term.focus();
+  };
+
   post({ type: 'ready' });
   reportResizeIfChanged();
+  term.focus();
 </script>
 </body>
 </html>`;
