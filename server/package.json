@@ -4,7 +4,8 @@
   "description": "WebSocket + PTY multi-session terminal server for the remote-terminal mobile app",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "postinstall": "chmod +x node_modules/node-pty/prebuilds/*/spawn-helper 2>/dev/null || true"
   },
   "dependencies": {
     "node-pty": "^1.0.0",
