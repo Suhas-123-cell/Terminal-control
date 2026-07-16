@@ -2,6 +2,7 @@ const os = require('os');
 const http = require('http');
 const pty = require('node-pty');
 const { WebSocketServer } = require('ws');
+const screen = require('./screen');
 
 const PORT = process.env.PORT || 3000;
 const TERM_TOKEN = process.env.TERM_TOKEN;
@@ -17,6 +18,36 @@ const shell = os.platform() === 'win32' ? 'powershell.exe' : (process.env.SHELL 
 // sessionId -> { pty, title, scrollback (string), cols, rows, alive }
 const sessions = new Map();
 let nextId = 1;
+
+// Clients currently watching the screen stream, and the shared capture loop.
+const screenClients = new Set();
+let screenInterval = null;
+
+function startScreenStreamIfNeeded() {
+  if (screenInterval) return;
+  screenInterval = setInterval(() => {
+    screen.captureFrame((err, buf) => {
+      if (err || screenClients.size === 0) return;
+      const dims = screen.jpegDimensions(buf);
+      const payload = JSON.stringify({
+        type: 'screen-frame',
+        data: buf.toString('base64'),
+        width: dims ? dims.width : undefined,
+        height: dims ? dims.height : undefined,
+      });
+      for (const client of screenClients) {
+        if (client.readyState === client.OPEN) client.send(payload);
+      }
+    });
+  }, screen.FRAME_INTERVAL_MS);
+}
+
+function stopScreenStreamIfIdle() {
+  if (screenClients.size === 0 && screenInterval) {
+    clearInterval(screenInterval);
+    screenInterval = null;
+  }
+}
 
 function shortTitle() {
   return `term-${nextId}`;
@@ -143,6 +174,20 @@ wss.on('connection', (ws, req) => {
         }
         break;
       }
+      case 'screen-start': {
+        screenClients.add(ws);
+        startScreenStreamIfNeeded();
+        break;
+      }
+      case 'screen-stop': {
+        screenClients.delete(ws);
+        stopScreenStreamIfIdle();
+        break;
+      }
+      case 'screen-input': {
+        screen.performInput(msg);
+        break;
+      }
       default:
         break;
     }
@@ -151,6 +196,8 @@ wss.on('connection', (ws, req) => {
   ws.on('close', () => {
     // Sessions are NOT killed on disconnect — they keep running until
     // an explicit "close" message or the shell process exits on its own.
+    screenClients.delete(ws);
+    stopScreenStreamIfIdle();
   });
 });
 
