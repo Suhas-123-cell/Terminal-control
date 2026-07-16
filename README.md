@@ -1,18 +1,22 @@
 # Remote Terminal
 
 A native mobile app that turns your phone into a full, unrestricted remote
-terminal for your laptop. Type any command, run interactive programs, send
-Ctrl+C to kill a running task, and keep multiple independent terminals open
-at once — all from a standalone Android/iOS app talking to a small server
+terminal **and** remote screen for your laptop. Type any command, run
+interactive programs, send Ctrl+C to kill a running task, keep multiple
+independent terminals open at once, and — when you need it — switch to a
+live view of your actual desktop and control the mouse and keyboard
+directly. All from a standalone Android/iOS app talking to a small server
 that runs on your laptop.
 
 - `server/` — WebSocket + PTY server that runs on your laptop (Node.js,
   `node-pty`, `ws`). Manages one or more real shells, each backed by a
-  pseudo-terminal.
+  pseudo-terminal, plus (on macOS) screen capture and mouse/keyboard
+  injection via `screencapture` and `cliclick`.
 - `app/` — React Native (Expo) app. Renders each terminal with xterm.js
   inside a WebView, with a tab bar for multiple terminals and a special-keys
   toolbar (Ctrl+C, Ctrl+D, Ctrl+Z, Esc, Tab, arrows, sticky Ctrl) pinned
-  above the keyboard.
+  above the keyboard. A toggle button (🖥️/⌨️) in the header switches to a
+  live screen view where taps/drags become real mouse clicks/drags.
 
 This is a full passthrough terminal, not a command menu: every keystroke is
 sent to the laptop as-is. There is no allow-list and no restriction on what
@@ -31,6 +35,24 @@ npm start
 
 The server listens on `PORT` (default `3000`) and only accepts WebSocket
 connections that include the matching `?token=` query parameter.
+
+### Screen control (macOS only, optional)
+
+The 🖥️ toggle in the app streams your desktop and lets you click/type on it
+remotely. This needs two things on your laptop:
+
+1. **`cliclick`** (mouse/keyboard injection): `brew install cliclick`
+2. **Permissions** for whichever app you run `npm start` in (e.g. Terminal,
+   iTerm) — go to **System Settings → Privacy & Security** and enable both:
+   - **Screen Recording**
+   - **Accessibility**
+
+   macOS only applies these grants to a process the *next* time it starts,
+   so **fully quit and reopen** your terminal app after granting them, then
+   run `npm start` again.
+
+Without these, the terminal features still work fine — you'll just see
+"Waiting for screen…" in the 🖥️ view instead of a live picture.
 
 ## 2. Point the app at the server
 
@@ -108,6 +130,14 @@ xcrun simctl install booted build/Build/Products/Release-iphonesimulator/app.app
   terminal (`Ctrl+C` → `\x03`, `Ctrl+D` → `\x04`, `Ctrl+Z` → `\x1a`, arrows →
   `\x1b[A/B/C/D`, etc.), plus a sticky Ctrl modifier that turns the next
   typed letter into its control code.
+- Screen control reuses the same WebSocket connection: `screen-start`/
+  `screen-stop` turn a `screencapture` polling loop on/off (~2.5 fps JPEG
+  frames sent as `screen-frame` messages), and `screen-input` messages
+  (`move`/`click`/`rightclick`/`doubleclick`/`drag`/`type`/`key`) are
+  translated into `cliclick` invocations. The app maps a tap's position on
+  the displayed frame to the real screen's pixel coordinates using the
+  frame's reported width/height, so it's always a 1:1 "tap where you want
+  to click" mapping regardless of phone screen size.
 
 ## Security notes
 
@@ -117,4 +147,6 @@ xcrun simctl install booted build/Build/Products/Release-iphonesimulator/app.app
   checked during the WebSocket handshake itself (bad tokens never get a
   connection accepted).
 - The server runs your real login shell with your real environment and
-  permissions — anyone with the token has full access to your laptop.
+  permissions — anyone with the token has full access to your laptop. With
+  screen control enabled, that also means full mouse/keyboard control of
+  your desktop, not just the shell.
