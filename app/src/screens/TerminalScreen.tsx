@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SpecialKeysToolbar, ctrlCode } from '../components/SpecialKeysToolbar';
 import { TerminalWebView, TerminalWebViewHandle } from '../components/TerminalWebView';
+import { ScreenControlScreen } from './ScreenControlScreen';
 import { saveSessionList, SessionMeta } from '../lib/storage';
 import { ConnectionStatus, TerminalClient } from '../lib/wsClient';
 
@@ -22,6 +23,7 @@ export function TerminalScreen({ client }: Props) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>('connected');
   const [ctrlSticky, setCtrlSticky] = useState(false);
+  const [mode, setMode] = useState<'terminal' | 'screen'>('terminal');
 
   const webviewRefs = useRef(new Map<string, TerminalWebViewHandle>());
   const activeIdRef = useRef<string | null>(null);
@@ -163,6 +165,13 @@ export function TerminalScreen({ client }: Props) {
             </Pressable>
           ))}
         </ScrollView>
+        <Pressable
+          onPress={() => setMode((m) => (m === 'terminal' ? 'screen' : 'terminal'))}
+          style={styles.modeButton}
+          accessibilityLabel="Toggle screen control"
+        >
+          <Text style={styles.modeButtonText}>{mode === 'terminal' ? '🖥️' : '⌨️'}</Text>
+        </Pressable>
         <Pressable onPress={addTerminal} style={styles.addButton} accessibilityLabel="New terminal">
           <Text style={styles.addButtonText}>+</Text>
         </Pressable>
@@ -176,31 +185,37 @@ export function TerminalScreen({ client }: Props) {
         </View>
       )}
 
-      <View style={styles.terminalArea}>
-        {sessions.map((s) => (
-          <TerminalWebView
-            key={s.id}
-            ref={(handle) => {
-              if (handle) webviewRefs.current.set(s.id, handle);
-              else webviewRefs.current.delete(s.id);
-            }}
-            visible={s.id === activeId}
-            onInput={(data) => handleInput(s.id, data)}
-            onResize={(cols, rows) => handleResize(s.id, cols, rows)}
-          />
-        ))}
-        {sessions.length === 0 && (
-          <View style={styles.empty}>
-            <Text style={styles.emptyText}>No terminals open. Tap + to start one.</Text>
+      {mode === 'screen' ? (
+        <ScreenControlScreen client={client} />
+      ) : (
+        <>
+          <View style={styles.terminalArea}>
+            {sessions.map((s) => (
+              <TerminalWebView
+                key={s.id}
+                ref={(handle) => {
+                  if (handle) webviewRefs.current.set(s.id, handle);
+                  else webviewRefs.current.delete(s.id);
+                }}
+                visible={s.id === activeId}
+                onInput={(data) => handleInput(s.id, data)}
+                onResize={(cols, rows) => handleResize(s.id, cols, rows)}
+              />
+            ))}
+            {sessions.length === 0 && (
+              <View style={styles.empty}>
+                <Text style={styles.emptyText}>No terminals open. Tap + to start one.</Text>
+              </View>
+            )}
           </View>
-        )}
-      </View>
 
-      <SpecialKeysToolbar
-        onSend={sendToActive}
-        ctrlSticky={ctrlSticky}
-        onToggleCtrl={() => setCtrlSticky((v) => !v)}
-      />
+          <SpecialKeysToolbar
+            onSend={sendToActive}
+            ctrlSticky={ctrlSticky}
+            onToggleCtrl={() => setCtrlSticky((v) => !v)}
+          />
+        </>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -246,6 +261,18 @@ const styles = StyleSheet.create({
     color: '#c6cad3',
     fontSize: 15,
     fontWeight: '700',
+  },
+  modeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 6,
+    backgroundColor: '#22293a',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 4,
+  },
+  modeButtonText: {
+    fontSize: 16,
   },
   addButton: {
     width: 36,

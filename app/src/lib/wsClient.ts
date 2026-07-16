@@ -2,7 +2,17 @@ export type ServerMessage =
   | { type: 'created'; sessionId: string; title: string }
   | { type: 'sessions'; sessions: { id: string; title: string; alive: boolean }[] }
   | { type: 'output'; sessionId: string; data: string }
-  | { type: 'exit'; sessionId: string };
+  | { type: 'exit'; sessionId: string }
+  | { type: 'screen-frame'; data: string; width?: number; height?: number };
+
+export type ScreenInputAction =
+  | { action: 'move'; x: number; y: number }
+  | { action: 'click'; x: number; y: number }
+  | { action: 'rightclick'; x: number; y: number }
+  | { action: 'doubleclick'; x: number; y: number }
+  | { action: 'drag'; x: number; y: number; toX: number; toY: number }
+  | { action: 'type'; text: string }
+  | { action: 'key'; key: string };
 
 export type ConnectionStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'error';
 
@@ -114,5 +124,17 @@ export class TerminalClient {
 
   close(sessionId: string) {
     this.send({ type: 'close', sessionId });
+  }
+
+  screenStart() {
+    this.send({ type: 'screen-start' });
+  }
+
+  screenStop() {
+    this.send({ type: 'screen-stop' });
+  }
+
+  screenInput(action: ScreenInputAction) {
+    this.send({ type: 'screen-input', ...action });
   }
 }
