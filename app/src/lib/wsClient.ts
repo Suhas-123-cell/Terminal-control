@@ -3,7 +3,8 @@ export type ServerMessage =
   | { type: 'sessions'; sessions: { id: string; title: string; alive: boolean }[] }
   | { type: 'output'; sessionId: string; data: string }
   | { type: 'exit'; sessionId: string }
-  | { type: 'screen-frame'; data: string; width?: number; height?: number };
+  | { type: 'screen-frame'; data: string; width?: number; height?: number }
+  | { type: 'screen-error'; message: string };
 
 export type ScreenInputAction =
   | { action: 'move'; x: number; y: number }
@@ -20,6 +21,8 @@ type Listener = (msg: ServerMessage) => void;
 type StatusListener = (status: ConnectionStatus) => void;
 
 const RECONNECT_DELAY_MS = 2000;
+// An unreachable host (e.g. Tailscale off) can otherwise hang for a minute+.
+const CONNECT_TIMEOUT_MS = 10000;
 
 export class TerminalClient {
   private ws: WebSocket | null = null;
@@ -31,7 +34,9 @@ export class TerminalClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(host: string, port: string, token: string) {
-    this.url = `ws://${host}:${port}?token=${encodeURIComponent(token)}`;
+    // Bare IPv6 addresses (e.g. Tailscale's fd7a:…) need brackets in a URL.
+    const urlHost = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+    this.url = `ws://${urlHost}:${port}?token=${encodeURIComponent(token)}`;
   }
 
   private setStatus(status: ConnectionStatus) {
@@ -60,7 +65,33 @@ export class TerminalClient {
       const ws = new WebSocket(this.url);
       this.ws = ws;
 
+      let closed = false;
+      const handleClose = () => {
+        if (closed) return;
+        closed = true;
+        clearTimeout(timeout);
+        reject(new Error('closed'));
+        if (this.ws !== ws) return; // replaced by a newer socket, or disconnect()ed
+        if (this.shouldReconnect) {
+          this.setStatus('reconnecting');
+          // Retries report progress through onStatus; their rejections are expected.
+          this.reconnectTimer = setTimeout(() => this.connect().catch(() => {}), RECONNECT_DELAY_MS);
+        } else {
+          this.setStatus('idle');
+        }
+      };
+      // Don't rely on close() of a still-connecting socket emitting onclose.
+      const timeout = setTimeout(() => {
+        handleClose();
+        ws.close();
+      }, CONNECT_TIMEOUT_MS);
+
       ws.onopen = () => {
+        if (closed) {
+          ws.close(); // opened after we already gave up on it
+          return;
+        }
+        clearTimeout(timeout);
         this.setStatus('connected');
         resolve();
       };
@@ -75,18 +106,10 @@ export class TerminalClient {
       };
 
       ws.onerror = () => {
-        this.setStatus('error');
+        if (this.ws === ws) this.setStatus('error');
       };
 
-      ws.onclose = () => {
-        if (this.shouldReconnect) {
-          this.setStatus('reconnecting');
-          this.reconnectTimer = setTimeout(() => this.connect(), RECONNECT_DELAY_MS);
-        } else {
-          this.setStatus('idle');
-        }
-        reject(new Error('closed'));
-      };
+      ws.onclose = handleClose;
     });
   }
 
@@ -94,6 +117,8 @@ export class TerminalClient {
     this.shouldReconnect = false;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.ws?.close();
+    this.ws = null;
+    this.setStatus('idle');
   }
 
   private send(payload: object) {
@@ -116,6 +141,10 @@ export class TerminalClient {
 
   input(sessionId: string, data: string) {
     this.send({ type: 'input', sessionId, data });
+  }
+
+  ack(sessionId: string, chars: number) {
+    this.send({ type: 'ack', sessionId, chars });
   }
 
   resize(sessionId: string, cols: number, rows: number) {

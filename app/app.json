@@ -3,9 +3,9 @@
     "name": "Remote Terminal",
     "slug": "remote-terminal",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.suhasdev.remoteterminal"
@@ -33,6 +33,7 @@
           }
         }
       ]
-    ]
+    ],
+    "backgroundColor": "#0b0e14"
   }
 }

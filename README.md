@@ -33,8 +33,11 @@ cp .env.example .env
 npm start
 ```
 
-The server listens on `PORT` (default `3000`) and only accepts WebSocket
-connections that include the matching `?token=` query parameter.
+The server reads `server/.env` on startup (Node 20.12+), listens on `PORT`
+(default `3000`), and only accepts WebSocket connections that include the
+matching `?token=` query parameter. Each terminal is your login shell
+(`$SHELL -l`), started in your home directory; `TERM_TOKEN` itself is
+removed from the shell's environment.
 
 ### Screen control (macOS only, optional)
 
@@ -51,8 +54,13 @@ remotely. This needs two things on your laptop:
    so **fully quit and reopen** your terminal app after granting them, then
    run `npm start` again.
 
-Without these, the terminal features still work fine — you'll just see
-"Waiting for screen…" in the 🖥️ view instead of a live picture.
+Without these, the terminal features still work fine — the 🖥️ view just
+shows what's missing (e.g. the Screen Recording permission) instead of a
+live picture.
+
+In the 🖥️ view: **tap** = click, **double-tap** = double-click, **hold** =
+right-click, **drag** = drag, and **⌨︎ Type** opens the keyboard to type
+into whatever has focus. Rotate the phone to landscape for a bigger view.
 
 ## 2. Point the app at the server
 
@@ -124,20 +132,35 @@ xcrun simctl install booted build/Build/Products/Release-iphonesimulator/app.app
   tabs, background the app, or lose connection — reattach later and it's
   still there, with scrollback replayed.
 - Each terminal tab is a `react-native-webview` running xterm.js, kept
-  mounted (just hidden) when its tab isn't active so its content and
-  scrollback survive tab switches without needing a fresh reattach.
+  mounted (just hidden) when its tab isn't active — or while the 🖥️ view is
+  open — so its content and scrollback survive without a fresh reattach.
+  xterm.js is bundled into the app (`npm install` runs
+  `scripts/inline-xterm.js`, which inlines it into `src/generated/`), so the
+  terminal works without internet access and loads no third-party code.
+- On every (re)connect the app asks the server for its session list, clears
+  each terminal, and reattaches, so the server replays scrollback exactly
+  once. The ⏏ button disconnects (shells keep running) and returns to the
+  Connection screen.
+- Output is flow-controlled end to end: the app acks output once xterm.js
+  has actually rendered it, and the server pauses a shell's PTY while any
+  client has more than ~256KB unacked. So `yes` or a huge `cat` can't bury
+  the phone in a backlog — the program just blocks, like on a slow
+  terminal, and `^C` takes effect immediately.
 - The special-keys toolbar sends raw control bytes into the active
   terminal (`Ctrl+C` → `\x03`, `Ctrl+D` → `\x04`, `Ctrl+Z` → `\x1a`, arrows →
   `\x1b[A/B/C/D`, etc.), plus a sticky Ctrl modifier that turns the next
   typed letter into its control code.
 - Screen control reuses the same WebSocket connection: `screen-start`/
-  `screen-stop` turn a `screencapture` polling loop on/off (~2.5 fps JPEG
-  frames sent as `screen-frame` messages), and `screen-input` messages
+  `screen-stop` turn a `screencapture` loop on/off (~2.5 fps JPEG frames
+  sent as `screen-frame` messages; failures are reported as
+  `screen-error`), and `screen-input` messages
   (`move`/`click`/`rightclick`/`doubleclick`/`drag`/`type`/`key`) are
-  translated into `cliclick` invocations. The app maps a tap's position on
-  the displayed frame to the real screen's pixel coordinates using the
-  frame's reported width/height, so it's always a 1:1 "tap where you want
-  to click" mapping regardless of phone screen size.
+  translated into `cliclick` invocations, run one at a time in order.
+  `screencapture` saves at Retina pixel resolution but `cliclick` works in
+  points, so each frame is scaled (with `sips`) to the main display's point
+  size: frame pixels are click coordinates. The app shows the frame
+  letterboxed at its true aspect ratio and maps a tap through that, so it's
+  a 1:1 "tap where you want to click" mapping regardless of phone size.
 
 ## Security notes
 

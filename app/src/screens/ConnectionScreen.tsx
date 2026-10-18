@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -39,23 +38,29 @@ export function ConnectionScreen({ onConnect }: Props) {
   };
 
   const handleConnect = async () => {
+    const config = { host: host.trim(), port: port.trim(), token: token.trim() };
+    const portNum = Number(config.port);
+    if (!config.host || !config.token || !Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
+      setStatus('error');
+      setError('Enter a host, a port between 1 and 65535, and the token.');
+      return;
+    }
     setStatus('connecting');
     setError(null);
-    const config = { host: host.trim(), port: port.trim(), token };
     try {
       await onConnect(config);
-      await saveConnectionConfig(config);
-    } catch (e) {
+    } catch {
       setStatus('error');
       setError('Could not connect. Check host, port, token, and that the server is running.');
       return;
     }
+    saveConnectionConfig(config).catch(() => {});
   };
 
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
     >
       <Text style={styles.title}>Remote Terminal</Text>
       <Text style={styles.label}>Host</Text>

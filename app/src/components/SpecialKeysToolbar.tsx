@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 type Props = {
@@ -9,10 +9,15 @@ type Props = {
 
 const ARROW = { up: '\x1b[A', down: '\x1b[B', right: '\x1b[C', left: '\x1b[D' };
 
-export function ctrlCode(letter: string): string {
-  // Ctrl+A..Z maps to 0x01..0x1a
-  const code = letter.toUpperCase().charCodeAt(0) - 64;
-  return String.fromCharCode(code);
+// Applies a sticky Ctrl to the first typed character: Ctrl+@,A..Z,[,\,],^,_
+// map to 0x00..0x1f and Ctrl+Space to NUL. Other characters pass through.
+// (Soft keyboards can deliver a whole word at once, hence "first".)
+export function applyCtrl(data: string): string {
+  const first = data.charAt(0);
+  if (first === '' || first.charCodeAt(0) > 127) return data;
+  const code = first === ' ' ? 64 : first.toUpperCase().charCodeAt(0);
+  if (code < 64 || code > 95) return data;
+  return String.fromCharCode(code - 64) + data.slice(1);
 }
 
 export function SpecialKeysToolbar({ onSend, ctrlSticky, onToggleCtrl }: Props) {
@@ -62,6 +67,7 @@ export function SpecialKeysToolbar({ onSend, ctrlSticky, onToggleCtrl }: Props) 
 
 const styles = StyleSheet.create({
   bar: {
+    flexGrow: 0, // ScrollView defaults to flexGrow 1 and would eat half the screen
     backgroundColor: '#161b22',
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: '#2a2f3a',

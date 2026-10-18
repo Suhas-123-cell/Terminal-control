@@ -1,12 +1,18 @@
-// HTML page loaded into each terminal WebView. Loads xterm.js + fit addon
-// from CDN (the device has internet), wires it to the RN <-> WebView bridge:
-//   - RN -> WebView: injectJavaScript("window.termWrite('<json-string>')")
-//   - WebView -> RN: window.ReactNativeWebView.postMessage(JSON string)
+import { fitAddonJs, xtermCss, xtermJs } from './generated/xterm';
+
+// HTML page loaded into each terminal WebView. xterm.js + the fit addon are
+// inlined (see scripts/inline-xterm.js), so it works offline. Bridge:
+//   - RN -> WebView: injectJavaScript("window.termWrite('<json-string>')"),
+//     window.termReset(), window.termFocus()
+//   - WebView -> RN: window.ReactNativeWebView.postMessage(JSON string):
+//     ready {cols, rows}, input {data}, resize {cols, rows},
+//     written {chars} (output fully parsed — drives server flow control),
+//     html-error {data}
 export const terminalHtml = `<!DOCTYPE html>
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+<style>${xtermCss}</style>
 <style>
   html, body { margin: 0; padding: 0; background: #0b0e14; height: 100%; overflow: hidden; }
   #terminal { width: 100%; height: 100%; }
@@ -15,23 +21,18 @@ export const terminalHtml = `<!DOCTYPE html>
 </head>
 <body>
 <div id="terminal"></div>
-<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
 <script>
-  window.onerror = function (message, source, lineno, colno, error) {
+  window.onerror = function (message, source, lineno) {
     if (window.ReactNativeWebView) {
       window.ReactNativeWebView.postMessage(JSON.stringify({
         type: 'html-error',
-        data: 'onerror: ' + message + ' @ ' + source + ':' + lineno + ' typeofTerminal=' + typeof Terminal + ' typeofFitAddon=' + typeof FitAddon,
+        data: 'onerror: ' + message + ' @ ' + source + ':' + lineno,
       }));
     }
   };
-  window.addEventListener('unhandledrejection', function (e) {
-    if (window.ReactNativeWebView) {
-      window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'html-error', data: 'unhandledrejection: ' + e.reason }));
-    }
-  });
 </script>
+<script>${xtermJs}</script>
+<script>${fitAddonJs}</script>
 <script>
   const term = new Terminal({
     cursorBlink: true,
@@ -62,22 +63,18 @@ export const terminalHtml = `<!DOCTYPE html>
   }
 
   term.onData((data) => post({ type: 'input', data }));
-
-  let lastCols = term.cols, lastRows = term.rows;
-  function reportResizeIfChanged() {
-    if (term.cols !== lastCols || term.rows !== lastRows) {
-      lastCols = term.cols;
-      lastRows = term.rows;
-      post({ type: 'resize', cols: term.cols, rows: term.rows });
-    }
-  }
-  term.onResize(reportResizeIfChanged);
-
+  term.onResize(({ cols, rows }) => post({ type: 'resize', cols, rows }));
   window.addEventListener('resize', () => { fitAddon.fit(); });
 
   // Native code calls this to inject raw bytes/output into this terminal.
   window.termWrite = function (dataJson) {
-    term.write(JSON.parse(dataJson));
+    const data = JSON.parse(dataJson);
+    term.write(data, () => post({ type: 'written', chars: data.length }));
+  };
+
+  // Clears screen + scrollback before the server replays a session's history.
+  window.termReset = function () {
+    term.reset();
   };
 
   // Native code calls this when this terminal's tab becomes active, so the
@@ -86,8 +83,9 @@ export const terminalHtml = `<!DOCTYPE html>
     term.focus();
   };
 
-  post({ type: 'ready' });
-  reportResizeIfChanged();
+  // Always report the real size once: the server's PTY starts at whatever the
+  // phone asked for (or 80x24) and must learn the fitted size.
+  post({ type: 'ready', cols: term.cols, rows: term.rows });
   term.focus();
 </script>
 </body>
