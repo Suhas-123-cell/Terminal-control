@@ -10,5 +10,8 @@
   "dependencies": {
     "node-pty": "^1.0.0",
     "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=20.12"
   }
 }
